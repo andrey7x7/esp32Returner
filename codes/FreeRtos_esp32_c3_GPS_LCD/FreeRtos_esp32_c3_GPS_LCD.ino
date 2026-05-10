@@ -1,11 +1,11 @@
-#include <Wire.h>
-#include <GyverOLED.h>
 #include <TinyGPSPlus.h>
 #include <iarduino_GPS_NMEA.h>  
 #include "GyverButton.h"
 #include "WiFi.h"
 #include "BluetoothSerial.h"
+#include <oledDisplay.h>
 
+OledDisplay oledDisp;
 
 float HOME_LAT = 54.973861, HOME_LON = 73.376773;
 
@@ -16,12 +16,7 @@ GButton butt1(BTN_PIN);
 // Функция для перевода градусов в радианы
 #define DEG_TO_RAD(degrees) ((degrees * M_PI) / 180.0)
 
-#define I2C_SDA 4
-#define I2C_SCL 3
-
 #define LED_BUILTIN 8 // Only one LED onboard
-
-GyverOLED<SSH1106_128x64> oled;
 
 #define TIME_ZONE 6
 iarduino_GPS_NMEA gps;
@@ -37,35 +32,10 @@ double longitude;
 uint16_t altitude;
 uint16_t speed;
 uint16_t course;
-
-uint8_t menu=0;
-
 float new_x2;
 float new_y2;
-struct Points {
-    float x_cor;      // значение координаты x
-    float y_cor;      // значение координаты y
-};
 
-Points getNewXY(int az){
-  float xc = 64.0f;   // Координата X центра вращения
-  float yc = 32.0f;   // Координата Y центра вращения
-  float x1 = 64.0f;   // Исходная координата X
-  float y1 = 10.0f;    // Исходная координата Y
-  float angle_deg = az; // Угол поворота в градусах
-
-  // Перевод угла в радианы
-  float theta_rad = DEG_TO_RAD(angle_deg);
-
-  // Вычисляем новые координаты
-  new_x2 = xc + (x1 - xc)*cos(theta_rad) - (y1 - yc)*sin(theta_rad);
-  new_y2 = yc + (x1 - xc)*sin(theta_rad) + (y1 - yc)*cos(theta_rad);
-
-  Points dat;
-  dat.x_cor=new_x2;
-  dat.x_cor=new_y2;
-  return dat;
-}
+uint8_t menu=0;
 
 void setup() {
     WiFi.mode(WIFI_OFF);
@@ -143,17 +113,15 @@ void TaskGPS(void *pvParameters) {
     GPS
 */
   uint32_t blink_delay = *((uint32_t *)pvParameters);
-  gps.begin(Serial1);                        //  Инициируем расшифровку строк NMEA указав объект используемой шины UART (вместо программной шины, можно указывать аппаратные: Serial, Serial1, Serial2, Serial3).
+  //  Инициируем расшифровку строк NMEA указав объект используемой шины UART (вместо программной шины, можно указывать аппаратные: Serial, Serial1, Serial2, Serial3).
+  gps.begin(Serial1);
   gps.timeZone(TIME_ZONE); 
 
   for (;;) {
     gps.read(); 
     sats = String(gps.satellites[GPS_ACTIVE]) + "/" + String(gps.satellites[GPS_VISIBLE]);
 
-    //timeGPS = String(gps.Hours)+":"+String(gps.minutes)+":"+String(gps.seconds);
     dateTimeGPS = getDateTime(gps.Hours, gps.minutes, gps.seconds, gps.day, gps.month, gps.year);
-
-    //dateGPS = String(gps.day)+"."+String(gps.month)+"."+String(gps.year);
 
     latitude = gps.latitude;
     longitude = gps.longitude;
@@ -173,75 +141,33 @@ void TaskLCD(void *pvParameters) {
 */
   uint32_t blink_delay = *((uint32_t *)pvParameters);
   // инициализация LCD
-  Wire.begin(I2C_SDA, I2C_SCL);
-  oled.init();  
+  oledDisp.setup();
 
   for (;;) {
-    oled.clear();   // очистить дисплей (или буфер)
-    oled.home();    // курсор в 0,0
-    oled.setScale(1);
     if(menu==0){
-      oled.setCursor(1, 0);
-      oled.print("Sat: ");
-      oled.print(sats);
-    
-      oled.setCursor(1, 1);
-      oled.print(dateTimeGPS);
-
-      oled.setCursor(1, 2);
-      oled.print("Ш: ");
-      oled.print(latitude,4);
-      oled.setCursor(1, 3);
-      oled.print("Д: ");
-      oled.print(longitude,4);
-      oled.setCursor(1, 4);
-      oled.print("В: ");
-      oled.print(altitude,1);
-      oled.print(" м");
-
-      oled.setCursor(1, 5);
-      oled.print("Скорость: ");
-      oled.print(speed);
-      oled.print(" км/ч");
-      oled.setCursor(1, 6);
-      oled.print("Курс: ");
-      oled.print(course);
-
-      oled.setCursor(1, 7);
-      oled.print("Расст: ");
-      oled.print(getDistToPoint());
+      oledDisp.menu1(sats, dateTimeGPS, latitude, longitude, altitude, speed, course, getDistToPoint());
     }
     if(menu==1){
-        oled.setScale(1);
-
-        oled.setCursor(0, 0);
-        oled.print("Azimut");
-        oled.setCursor(95, 0); 
-        oled.print("Speed");
-        oled.setCursor(5, 1); 
-        oled.print(course, 0);
-        oled.setCursor(103, 1); 
-        oled.print(speed, 0);
-        oled.setCursor(100, 2); 
-        oled.print("км/ч");
-
-        oled.setCursor(0, 6);
-        oled.print("Dist");
-        oled.setCursor(0, 7);
-        oled.print(getDistToPoint());
-
-        //oled.setCursor(100, 7);
-        //oled.print(analogRead(POW_PIN));
-
-        oled.dot(64, 32);
-        oled.circle(64, 32, 30, OLED_STROKE);
-  
-        Points xy = getNewXY(courseToHomeCorrect());
-        oled.line(64, 32, new_x2, new_y2);
+      calcNewXY(courseToHomeCorrect());
+      oledDisp.menu2(course, speed, getDistToPoint(), new_x2, new_y2);
     }
-    oled.update();
     delay(blink_delay);
   }
+}
+
+void calcNewXY(int az){
+  float xc = 64.0f;   // Координата X центра вращения
+  float yc = 32.0f;   // Координата Y центра вращения
+  float x1 = 64.0f;   // Исходная координата X
+  float y1 = 10.0f;    // Исходная координата Y
+  float angle_deg = az; // Угол поворота в градусах
+
+  // Перевод угла в радианы
+  float theta_rad = DEG_TO_RAD(angle_deg);
+
+  // Вычисляем новые координаты
+  new_x2 = xc + (x1 - xc)*cos(theta_rad) - (y1 - yc)*sin(theta_rad);
+  new_y2 = yc + (x1 - xc)*sin(theta_rad) + (y1 - yc)*cos(theta_rad);
 }
 
 float courseToHomeCorrect(){
