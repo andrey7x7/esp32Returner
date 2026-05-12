@@ -103,7 +103,7 @@ void TaskBtn(void *pvParameters) {
 
     if (butt1.isSingle()) menu++;       // проверка на один клик
     if (butt1.isDouble()) menu--;       // проверка на двойной клик
-    if (menu>1) menu=0;
+    if (menu>2) menu=0;
     delay(btn_delay);
   }
 }
@@ -151,6 +151,10 @@ void TaskLCD(void *pvParameters) {
       calcNewXY(courseToHomeCorrect());
       oledDisp.menu2(course, speed, getDistToPoint(), new_x2, new_y2);
     }
+    if(menu==2){
+      calcNewXY(courseToHomeCorrect());
+      oledDisp.drawCompassArrow(course, speed, getDistToPoint());
+    }
     delay(blink_delay);
   }
 }
@@ -186,7 +190,7 @@ String getDistToPoint(){
   if(dist<1000)
     return String(dist)+" м";
   if(dist>1000 && dist<8900000)
-    return String(dist)+" км";
+    return String(dist/1000)+" км";
   return "---";
 }
 
